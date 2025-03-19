@@ -1,29 +1,14 @@
-import QtCore
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Controls.Basic
 import QtQuick.Layouts
-import QtQuick.Dialogs
-import Qt.labs.folderlistmodel
-import Qt5Compat.GraphicalEffects
-
-import llm
-import chatlistmodel
-import download
-import modellist
-import network
-import gpt4all
-import mysettings
-import localdocs
-
 
 Rectangle {
+    id: remoteModelCard
+    property var provider // required
     property alias providerName: providerNameLabel.text
     property alias providerImage: myimage.source
     property alias providerDesc: providerDescLabel.text
-    property string providerBaseUrl: ""
-    property bool providerIsCustom: false
-    property var modelWhitelist: null
+    property bool providerUsesApiKey: true
 
     color: theme.conversationBackground
     radius: 10
@@ -88,6 +73,39 @@ Rectangle {
         spacing: 30
 
         ColumnLayout {
+            visible: !provider.isBuiltin
+
+            MySettingsLabel {
+                text: qsTr("Name")
+                font.bold: true
+                font.pixelSize: theme.fontSizeLarge
+                color: theme.settingsTitleTextColor
+            }
+
+            MyTextField {
+                id: nameField
+                property bool initialized: false
+                property bool ok: true
+                Layout.fillWidth: true
+                font.pixelSize: theme.fontSizeLarge
+                wrapMode: Text.WrapAnywhere
+                Component.onCompleted: {
+                    text = provider.name;
+                    initialized = true;
+                }
+                onTextChanged: {
+                    if (!initialized) return;
+                    ok = provider.setNameQml(text.trim());
+                }
+                placeholderText: qsTr("Provider Name")
+                Accessible.role: Accessible.EditableText
+                Accessible.name: placeholderText
+            }
+        }
+
+        ColumnLayout {
+            visible: "apiKey" in provider
+
             MySettingsLabel {
                 text: qsTr("API Key")
                 font.bold: true
@@ -97,32 +115,34 @@ Rectangle {
 
             MyTextField {
                 id: apiKeyField
+                property bool initialized: false
+                property bool ok: false
                 Layout.fillWidth: true
                 font.pixelSize: theme.fontSizeLarge
                 wrapMode: Text.WrapAnywhere
-                function showError() {
-                    messageToast.show(qsTr("ERROR: $API_KEY is empty."));
-                    apiKeyField.placeholderTextColor = theme.textErrorColor;
+                echoMode: TextField.Password
+                Component.onCompleted: {
+                    if (parent.visible) {
+                        text = provider.apiKey;
+                        ok = text.trim() != "";
+                    } else
+                        ok = true;
+                    initialized = true;
                 }
                 onTextChanged: {
-                    apiKeyField.placeholderTextColor = theme.mutedTextColor;
-                    if (!providerIsCustom) {
-                        let models = ModelList.remoteModelList(apiKeyField.text, providerBaseUrl);
-                        if (modelWhitelist !== null)
-                            models = models.filter(m => modelWhitelist.includes(m));
-                        myModelList.model = models;
-                        myModelList.currentIndex = -1;
-                    }
+                    if (!initialized) return;
+                    console.log(`${provider} has an apiKey: ${('apiKey' in provider)},${typeof provider.apiKey},${provider.apiKey}`);
+                    return;
+                    ok = provider.setApiKeyQml(text.trim()) && text.trim() !== "";
                 }
-                placeholderText: qsTr("enter $API_KEY")
+                placeholderText: qsTr("Provider API Key")
                 Accessible.role: Accessible.EditableText
                 Accessible.name: placeholderText
-                Accessible.description: qsTr("Whether the file hash is being calculated")
             }
         }
 
         ColumnLayout {
-            visible: providerIsCustom
+            visible: !provider.isBuiltin
             MySettingsLabel {
                 text: qsTr("Base Url")
                 font.bold: true
@@ -131,49 +151,27 @@ Rectangle {
             }
             MyTextField {
                 id: baseUrlField
+                property bool initialized: false
+                property bool ok: true
                 Layout.fillWidth: true
                 font.pixelSize: theme.fontSizeLarge
                 wrapMode: Text.WrapAnywhere
-                function showError() {
-                    messageToast.show(qsTr("ERROR: $BASE_URL is empty."));
-                    baseUrlField.placeholderTextColor = theme.textErrorColor;
+                Component.onCompleted: {
+                    text = provider.baseUrl;
+                    initialized = true;
                 }
                 onTextChanged: {
-                    baseUrlField.placeholderTextColor = theme.mutedTextColor;
+                    if (!initialized) return;
+                    ok = provider.setBaseUrlQml(text.trim()) && text.trim() !== "";
                 }
-                placeholderText: qsTr("enter $BASE_URL")
-                Accessible.role: Accessible.EditableText
-                Accessible.name: placeholderText
-            }
-        }
-        ColumnLayout {
-            visible: providerIsCustom
-            MySettingsLabel {
-                text: qsTr("Model Name")
-                font.bold: true
-                font.pixelSize: theme.fontSizeLarge
-                color: theme.settingsTitleTextColor
-            }
-            MyTextField {
-                id: modelNameField
-                Layout.fillWidth: true
-                font.pixelSize: theme.fontSizeLarge
-                wrapMode: Text.WrapAnywhere
-                function showError() {
-                    messageToast.show(qsTr("ERROR: $MODEL_NAME is empty."))
-                    modelNameField.placeholderTextColor = theme.textErrorColor;
-                }
-                onTextChanged: {
-                    modelNameField.placeholderTextColor = theme.mutedTextColor;
-                }
-                placeholderText: qsTr("enter $MODEL_NAME")
+                placeholderText: qsTr("Provider Base URL")
                 Accessible.role: Accessible.EditableText
                 Accessible.name: placeholderText
             }
         }
 
         ColumnLayout {
-            visible: myModelList.count > 0 && !providerIsCustom
+            visible: myModelList.count > 0
 
             MySettingsLabel {
                 text: qsTr("Models")
@@ -188,7 +186,17 @@ Rectangle {
                 MyComboBox {
                     Layout.fillWidth: true
                     id: myModelList
-                    currentIndex: -1;
+                    currentIndex: -1
+                    property bool ready: nameField.ok && baseUrlField.ok && apiKeyField.ok
+                    onReadyChanged: {
+                        if (!ready) return;
+                        provider.listModelsQml().then(modelList => {
+                            if (modelList !== null) {
+                                model = modelList;
+                                currentIndex = -1;
+                            }
+                        });
+                    }
                 }
             }
         }
@@ -200,10 +208,9 @@ Rectangle {
             font.pixelSize: theme.fontSizeLarge
 
             property string apiKeyText: apiKeyField.text.trim()
-            property string baseUrlText: providerIsCustom ? baseUrlField.text.trim() : providerBaseUrl.trim()
-            property string modelNameText: providerIsCustom ? modelNameField.text.trim() : myModelList.currentText.trim()
+            property string modelNameText: myModelList.currentText.trim()
 
-            enabled: apiKeyText !== "" && baseUrlText !== "" && modelNameText !== ""
+            enabled: nameField.ok && baseUrlField.ok && apiKeyField.ok && modelNameText !== ""
 
             onClicked: {
                 Download.installCompatibleModel(

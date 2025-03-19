@@ -4,10 +4,10 @@
 #include "database.h"
 #include "tool.h"
 #include "toolcallparser.h"
-#include "utils.h" // IWYU pragma: keep
 #include "xlsxtomd.h"
 
 #include <fmt/format.h>
+#include <gpt4all-backend/formatters.h>
 
 #include <QAbstractListModel>
 #include <QBuffer>

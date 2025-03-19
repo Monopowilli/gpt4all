@@ -18,6 +18,7 @@
 class Chat;
 class ChatRequest;
 class CompletionRequest;
+namespace QCoro { template <typename T> class Task; }
 
 
 class Server : public ChatLLM
@@ -35,8 +36,8 @@ Q_SIGNALS:
     void requestResetResponseState();
 
 private:
-    auto handleCompletionRequest(const CompletionRequest &request) -> std::pair<QHttpServerResponse, std::optional<QJsonObject>>;
-    auto handleChatRequest(const ChatRequest &request) -> std::pair<QHttpServerResponse, std::optional<QJsonObject>>;
+    auto handleCompletionRequest(const CompletionRequest &request) -> QCoro::Task<std::pair<QHttpServerResponse, std::optional<QJsonObject>>>;
+    auto handleChatRequest(const ChatRequest &request) -> QCoro::Task<std::pair<QHttpServerResponse, std::optional<QJsonObject>>>;
 
 private Q_SLOTS:
     void handleDatabaseResultsChanged(const QList<ResultInfo> &results) { m_databaseResults = results; }

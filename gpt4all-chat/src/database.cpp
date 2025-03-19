@@ -1,10 +1,10 @@
 #include "database.h"
 
 #include "mysettings.h"
-#include "utils.h" // IWYU pragma: keep
 
 #include <duckx/duckx.hpp>
 #include <fmt/format.h>
+#include <gpt4all-backend/formatters.h>
 #include <usearch/index.hpp>
 #include <usearch/index_plugins.hpp>
 

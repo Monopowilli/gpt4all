@@ -88,73 +88,14 @@ bool EmbeddingLLMWorker::loadModel()
         return false;
     }
 
-    QString requestedDevice = MySettings::globalInstance()->localDocsEmbedDevice();
-    std::string backend = "auto";
-#ifdef Q_OS_MAC
-    if (requestedDevice == "Auto" || requestedDevice == "CPU")
-        backend = "cpu";
-#else
-    if (requestedDevice.startsWith("CUDA: "))
-        backend = "cuda";
-#endif
-
     try {
-        m_model = LLModel::Implementation::construct(filePath.toStdString(), backend, n_ctx);
+        m_model = LLModel::Implementation::construct(filePath.toStdString(), "", n_ctx);
     } catch (const std::exception &e) {
         qWarning() << "embllm WARNING: Could not load embedding model:" << e.what();
         return false;
     }
 
-    bool actualDeviceIsCPU = true;
-
-#if defined(Q_OS_MAC) && defined(__aarch64__)
-    if (m_model->implementation().buildVariant() == "metal")
-        actualDeviceIsCPU = false;
-#else
-    if (requestedDevice != "CPU") {
-        const LLModel::GPUDevice *device = nullptr;
-        std::vector<LLModel::GPUDevice> availableDevices = m_model->availableGPUDevices(0);
-        if (requestedDevice != "Auto") {
-            // Use the selected device
-            for (const LLModel::GPUDevice &d : availableDevices) {
-                if (QString::fromStdString(d.selectionName()) == requestedDevice) {
-                    device = &d;
-                    break;
-                }
-            }
-        }
-
-        std::string unavail_reason;
-        if (!device) {
-            // GPU not available
-        } else if (!m_model->initializeGPUDevice(device->index, &unavail_reason)) {
-            qWarning().noquote() << "embllm WARNING: Did not use GPU:" << QString::fromStdString(unavail_reason);
-        } else {
-            actualDeviceIsCPU = false;
-        }
-    }
-#endif
-
     bool success = m_model->loadModel(filePath.toStdString(), n_ctx, 100);
-
-    // CPU fallback
-    if (!actualDeviceIsCPU && !success) {
-        // llama_init_from_file returned nullptr
-        qWarning() << "embllm WARNING: Did not use GPU: GPU loading failed (out of VRAM?)";
-
-        if (backend == "cuda") {
-            // For CUDA, make sure we don't use the GPU at all - ngl=0 still offloads matmuls
-            try {
-                m_model = LLModel::Implementation::construct(filePath.toStdString(), "auto", n_ctx);
-            } catch (const std::exception &e) {
-                qWarning() << "embllm WARNING: Could not load embedding model:" << e.what();
-                return false;
-            }
-        }
-
-        success = m_model->loadModel(filePath.toStdString(), n_ctx, 0);
-    }
-
     if (!success) {
         qWarning() << "embllm WARNING: Could not load embedding model";
         delete m_model;
@@ -168,10 +109,6 @@ bool EmbeddingLLMWorker::loadModel()
         m_model = nullptr;
         return false;
     }
-
-    // FIXME(jared): the user may want this to take effect without having to restart
-    int n_threads = MySettings::globalInstance()->threadCount();
-    m_model->setThreadCount(n_threads);
 
     return true;
 }

@@ -372,8 +372,6 @@ void Network::trackChatEvent(const QString &ev, QVariantMap props)
     Q_ASSERT(curChat);
     if (!props.contains("model"))
         props.insert("model", curChat->modelInfo().filename());
-    props.insert("device_backend", curChat->deviceBackend());
-    props.insert("actualDevice", curChat->device());
     props.insert("doc_collections_enabled", curChat->collectionList().count());
     props.insert("doc_collections_total", LocalDocs::globalInstance()->localDocsModel()->rowCount());
     props.insert("datalake_active", MySettings::globalInstance()->networkIsActive());

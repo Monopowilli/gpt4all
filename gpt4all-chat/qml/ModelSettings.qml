@@ -792,53 +792,6 @@ MySettingsTab {
             }
 
             MySettingsLabel {
-                id: batchSizeLabel
-                visible: !root.currentModelInfo.isOnline
-                text: qsTr("Prompt Batch Size")
-                helpText: qsTr("The batch size used for prompt processing.")
-                Layout.row: 1
-                Layout.column: 0
-                Layout.maximumWidth: 300 * theme.fontScale
-            }
-            MyTextField {
-                id: batchSizeField
-                visible: !root.currentModelInfo.isOnline
-                text: root.currentModelInfo.promptBatchSize
-                color: theme.textColor
-                font.pixelSize: theme.fontSizeLarge
-                ToolTip.text: qsTr("Amount of prompt tokens to process at once.\nNOTE: Higher values can speed up reading prompts but will use more RAM.")
-                ToolTip.visible: hovered
-                Layout.row: 1
-                Layout.column: 1
-                validator: IntValidator {
-                    bottom: 1
-                }
-                Connections {
-                    target: MySettings
-                    function onPromptBatchSizeChanged() {
-                        batchSizeField.text = root.currentModelInfo.promptBatchSize;
-                    }
-                }
-                Connections {
-                    target: root
-                    function onCurrentModelInfoChanged() {
-                        batchSizeField.text = root.currentModelInfo.promptBatchSize;
-                    }
-                }
-                onEditingFinished: {
-                    var val = parseInt(text)
-                    if (!isNaN(val)) {
-                        MySettings.setModelPromptBatchSize(root.currentModelInfo, val)
-                        focus = false
-                    } else {
-                        text = root.currentModelInfo.promptBatchSize
-                    }
-                }
-                Accessible.role: Accessible.EditableText
-                Accessible.name: batchSizeLabel.text
-                Accessible.description: ToolTip.text
-            }
-            MySettingsLabel {
                 id: repeatPenaltyLabel
                 visible: !root.currentModelInfo.isOnline
                 text: qsTr("Repeat Penalty")

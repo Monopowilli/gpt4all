@@ -97,6 +97,11 @@ Rectangle {
                 }
             }
             MyTabButton {
+                text: qsTr("Custom Providers")
+                isSelected: customProviderModelView.isShown()
+                onPressed: customProviderModelView.show()
+            }
+            MyTabButton {
                 text: qsTr("HuggingFace")
                 isSelected: huggingfaceModelView.isShown()
                 onPressed: {
@@ -136,6 +141,15 @@ Rectangle {
                 }
             }
 
+            AddCustomProviderView {
+                id: customProviderModelView
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+
+                function show() { stackLayout.currentIndex = 2; }
+                function isShown() { return stackLayout.currentIndex === 2; }
+            }
+
             AddHFModelView {
                 id: huggingfaceModelView
                 Layout.fillWidth: true
@@ -146,10 +160,10 @@ Rectangle {
                 anchors.fill: parent
 
                 function show() {
-                    stackLayout.currentIndex = 2;
+                    stackLayout.currentIndex = 3;
                 }
                 function isShown() {
-                    return stackLayout.currentIndex === 2;
+                    return stackLayout.currentIndex === 3;
                 }
             }
         }

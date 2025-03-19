@@ -2,11 +2,15 @@
 
 #include "chat.h"
 #include "chatmodel.h"
+#include "llmodel_description.h"
+#include "llmodel_provider.h"
 #include "modellist.h"
 #include "mysettings.h"
-#include "utils.h" // IWYU pragma: keep
 
+#include <QCoro/QCoroTask>
 #include <fmt/format.h>
+#include <gpt4all-backend/formatters.h>
+#include <gpt4all-backend/generation-params.h>
 #include <gpt4all-backend/llmodel.h>
 
 #include <QByteArray>
@@ -49,8 +53,10 @@
 #include <variant>
 #include <vector>
 
-using namespace std::string_literals;
 using namespace Qt::Literals::StringLiterals;
+using namespace std::string_literals;
+using namespace gpt4all;
+using namespace gpt4all::ui;
 
 //#define DEBUG
 
@@ -126,11 +132,11 @@ class BaseCompletionRequest {
 public:
     QString model; // required
     // NB: some parameters are not supported yet
-    int32_t max_tokens = 16;
     qint64 n = 1;
-    float temperature = 1.f;
-    float top_p = 1.f;
-    float min_p = 0.f;
+    std::optional<uint> max_tokens {};
+    std::optional<float> temperature {};
+    std::optional<float> top_p {};
+    std::optional<float> min_p {};
 
     BaseCompletionRequest() = default;
     virtual ~BaseCompletionRequest() = default;
@@ -161,7 +167,7 @@ protected:
 
         value = reqValue("max_tokens", Integer, false, /*min*/ 1);
         if (!value.isNull())
-            this->max_tokens = int32_t(qMin(value.toInteger(), INT32_MAX));
+            this->max_tokens = uint(qMin(value.toInteger(), qint64(UINT32_MAX)));
 
         value = reqValue("n", Integer, false, /*min*/ 1);
         if (!value.isNull())
@@ -523,7 +529,7 @@ void Server::start()
 #endif
                 CompletionRequest req;
                 parseRequest(req, std::move(reqObj));
-                auto [resp, respObj] = handleCompletionRequest(req);
+                auto [resp, respObj] = QCoro::waitFor(handleCompletionRequest(req));
 #if defined(DEBUG)
                 if (respObj)
                     qDebug().noquote() << "/v1/completions reply" << QJsonDocument(*respObj).toJson(QJsonDocument::Indented);
@@ -547,7 +553,7 @@ void Server::start()
 #endif
                 ChatRequest req;
                 parseRequest(req, std::move(reqObj));
-                auto [resp, respObj] = handleChatRequest(req);
+                auto [resp, respObj] = QCoro::waitFor(handleChatRequest(req));
                 (void)respObj;
 #if defined(DEBUG)
                 if (respObj)
@@ -624,11 +630,9 @@ static auto makeError(auto &&...args) -> std::pair<QHttpServerResponse, std::opt
 }
 
 auto Server::handleCompletionRequest(const CompletionRequest &request)
-    -> std::pair<QHttpServerResponse, std::optional<QJsonObject>>
+    -> QCoro::Task<std::pair<QHttpServerResponse, std::optional<QJsonObject>>>
 {
     Q_ASSERT(m_chatModel);
-
-    auto *mySettings = MySettings::globalInstance();
 
     ModelInfo modelInfo = ModelList::globalInstance()->defaultModelInfo();
     const QList<ModelInfo> modelList = ModelList::globalInstance()->selectableModelList();
@@ -647,7 +651,7 @@ auto Server::handleCompletionRequest(const CompletionRequest &request)
 
     if (modelInfo.filename().isEmpty()) {
         std::cerr << "ERROR: couldn't load default model " << request.model.toStdString() << std::endl;
-        return makeError(QHttpServerResponder::StatusCode::InternalServerError);
+        co_return makeError(QHttpServerResponder::StatusCode::InternalServerError);
     }
 
     emit requestResetResponseState(); // blocks
@@ -655,27 +659,29 @@ auto Server::handleCompletionRequest(const CompletionRequest &request)
     if (prevMsgIndex >= 0)
         m_chatModel->updateCurrentResponse(prevMsgIndex, false);
 
-    // NB: this resets the context, regardless of whether this model is already loaded
-    if (!loadModel(modelInfo)) {
+    if (!co_await loadModel(modelInfo)) {
         std::cerr << "ERROR: couldn't load model " << modelInfo.name().toStdString() << std::endl;
-        return makeError(QHttpServerResponder::StatusCode::InternalServerError);
+        co_return makeError(QHttpServerResponder::StatusCode::InternalServerError);
+    }
+
+    std::unique_ptr<GenerationParams> genParams;
+    {
+        using enum GenerationParam;
+        QMap<GenerationParam, QVariant> values;
+        if (auto v = request.max_tokens ) values.insert(NPredict,    *v);
+        if (auto v = request.temperature) values.insert(Temperature, *v);
+        if (auto v = request.top_p      ) values.insert(TopP,        *v);
+        if (auto v = request.min_p      ) values.insert(MinP,        *v);
+        try {
+            genParams.reset(modelProvider()->makeGenerationParams(values));
+        } catch (const std::exception &e) {
+            throw InvalidRequestError(e.what());
+        }
     }
 
     // add prompt/response items to GUI
     m_chatModel->appendPrompt(request.prompt);
     m_chatModel->appendResponse();
-
-    // FIXME(jared): taking parameters from the UI inhibits reproducibility of results
-    LLModel::PromptContext promptCtx {
-        .n_predict      = request.max_tokens,
-        .top_k          = mySettings->modelTopK(modelInfo),
-        .top_p          = request.top_p,
-        .min_p          = request.min_p,
-        .temp           = request.temperature,
-        .n_batch        = mySettings->modelPromptBatchSize(modelInfo),
-        .repeat_penalty = float(mySettings->modelRepeatPenalty(modelInfo)),
-        .repeat_last_n  = mySettings->modelRepeatPenaltyTokens(modelInfo),
-    };
 
     auto promptUtf8 = request.prompt.toUtf8();
     int promptTokens = 0;
@@ -684,14 +690,14 @@ auto Server::handleCompletionRequest(const CompletionRequest &request)
     for (int i = 0; i < request.n; ++i) {
         PromptResult result;
         try {
-            result = promptInternal(std::string_view(promptUtf8.cbegin(), promptUtf8.cend()),
-                                    promptCtx,
-                                    /*usedLocalDocs*/ false);
+            result = co_await promptInternal(std::string_view(promptUtf8.cbegin(), promptUtf8.cend()),
+                                             genParams.get(),
+                                             /*usedLocalDocs*/ false);
         } catch (const std::exception &e) {
             m_chatModel->setResponseValue(e.what());
             m_chatModel->setError();
             emit responseStopped(0);
-            return makeError(QHttpServerResponder::StatusCode::InternalServerError);
+            co_return makeError(QHttpServerResponder::StatusCode::InternalServerError);
         }
         QString resp = QString::fromUtf8(result.response);
         if (request.echo)
@@ -726,14 +732,12 @@ auto Server::handleCompletionRequest(const CompletionRequest &request)
         { "total_tokens",      promptTokens + responseTokens },
     });
 
-    return {QHttpServerResponse(responseObject), responseObject};
+    co_return { QHttpServerResponse(responseObject), responseObject };
 }
 
 auto Server::handleChatRequest(const ChatRequest &request)
-    -> std::pair<QHttpServerResponse, std::optional<QJsonObject>>
+    -> QCoro::Task<std::pair<QHttpServerResponse, std::optional<QJsonObject>>>
 {
-    auto *mySettings = MySettings::globalInstance();
-
     ModelInfo modelInfo = ModelList::globalInstance()->defaultModelInfo();
     const QList<ModelInfo> modelList = ModelList::globalInstance()->selectableModelList();
     for (const ModelInfo &info : modelList) {
@@ -751,15 +755,14 @@ auto Server::handleChatRequest(const ChatRequest &request)
 
     if (modelInfo.filename().isEmpty()) {
         std::cerr << "ERROR: couldn't load default model " << request.model.toStdString() << std::endl;
-        return makeError(QHttpServerResponder::StatusCode::InternalServerError);
+        co_return makeError(QHttpServerResponder::StatusCode::InternalServerError);
     }
 
     emit requestResetResponseState(); // blocks
 
-    // NB: this resets the context, regardless of whether this model is already loaded
-    if (!loadModel(modelInfo)) {
+    if (!co_await loadModel(modelInfo)) {
         std::cerr << "ERROR: couldn't load model " << modelInfo.name().toStdString() << std::endl;
-        return makeError(QHttpServerResponder::StatusCode::InternalServerError);
+        co_return makeError(QHttpServerResponder::StatusCode::InternalServerError);
     }
 
     m_chatModel->updateCurrentResponse(m_chatModel->count() - 1, false);
@@ -778,17 +781,20 @@ auto Server::handleChatRequest(const ChatRequest &request)
     }
     auto startOffset = m_chatModel->appendResponseWithHistory(messages);
 
-    // FIXME(jared): taking parameters from the UI inhibits reproducibility of results
-    LLModel::PromptContext promptCtx {
-        .n_predict      = request.max_tokens,
-        .top_k          = mySettings->modelTopK(modelInfo),
-        .top_p          = request.top_p,
-        .min_p          = request.min_p,
-        .temp           = request.temperature,
-        .n_batch        = mySettings->modelPromptBatchSize(modelInfo),
-        .repeat_penalty = float(mySettings->modelRepeatPenalty(modelInfo)),
-        .repeat_last_n  = mySettings->modelRepeatPenaltyTokens(modelInfo),
-    };
+    std::unique_ptr<GenerationParams> genParams;
+    {
+        using enum GenerationParam;
+        QMap<GenerationParam, QVariant> values;
+        if (auto v = request.max_tokens ) values.insert(NPredict,    *v);
+        if (auto v = request.temperature) values.insert(Temperature, *v);
+        if (auto v = request.top_p      ) values.insert(TopP,        *v);
+        if (auto v = request.min_p      ) values.insert(MinP,        *v);
+        try {
+            genParams.reset(modelProvider()->makeGenerationParams(values));
+        } catch (const std::exception &e) {
+            throw InvalidRequestError(e.what());
+        }
+    }
 
     int promptTokens   = 0;
     int responseTokens = 0;
@@ -796,12 +802,12 @@ auto Server::handleChatRequest(const ChatRequest &request)
     for (int i = 0; i < request.n; ++i) {
         ChatPromptResult result;
         try {
-            result = promptInternalChat(m_collections, promptCtx, startOffset);
+            result = co_await promptInternalChat(m_collections, genParams.get(), startOffset);
         } catch (const std::exception &e) {
             m_chatModel->setResponseValue(e.what());
             m_chatModel->setError();
             emit responseStopped(0);
-            return makeError(QHttpServerResponder::StatusCode::InternalServerError);
+            co_return makeError(QHttpServerResponder::StatusCode::InternalServerError);
         }
         responses.emplace_back(result.response, result.databaseResults);
         if (i == 0)
@@ -849,5 +855,5 @@ auto Server::handleChatRequest(const ChatRequest &request)
         { "total_tokens",      promptTokens + responseTokens },
     });
 
-    return {QHttpServerResponse(responseObject), responseObject};
+    co_return {QHttpServerResponse(responseObject), responseObject};
 }

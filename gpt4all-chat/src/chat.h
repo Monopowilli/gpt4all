@@ -39,9 +39,6 @@ class Chat : public QObject
     Q_PROPERTY(QList<QString> collectionList READ collectionList NOTIFY collectionListChanged)
     Q_PROPERTY(QString modelLoadingError READ modelLoadingError NOTIFY modelLoadingErrorChanged)
     Q_PROPERTY(QString tokenSpeed READ tokenSpeed NOTIFY tokenSpeedChanged)
-    Q_PROPERTY(QString deviceBackend READ deviceBackend NOTIFY loadedModelInfoChanged)
-    Q_PROPERTY(QString device READ device NOTIFY loadedModelInfoChanged)
-    Q_PROPERTY(QString fallbackReason READ fallbackReason NOTIFY loadedModelInfoChanged)
     Q_PROPERTY(LocalDocsCollectionsModel *collectionModel READ collectionModel NOTIFY collectionModelChanged)
     // 0=no, 1=waiting, 2=working
     Q_PROPERTY(int trySwitchContextInProgress READ trySwitchContextInProgress NOTIFY trySwitchContextInProgressChanged)
@@ -122,10 +119,6 @@ public:
     QString modelLoadingError() const { return m_modelLoadingError; }
 
     QString tokenSpeed() const { return m_tokenSpeed; }
-    QString deviceBackend() const;
-    QString device() const;
-    // not loaded -> QString(), no fallback -> QString("")
-    QString fallbackReason() const;
 
     int trySwitchContextInProgress() const { return m_trySwitchContextInProgress; }
 
@@ -159,8 +152,6 @@ Q_SIGNALS:
     void isServerChanged();
     void collectionListChanged(const QList<QString> &collectionList);
     void tokenSpeedChanged();
-    void deviceChanged();
-    void fallbackReasonChanged();
     void collectionModelChanged();
     void trySwitchContextInProgressChanged();
     void loadedModelInfoChanged();
@@ -192,8 +183,6 @@ private:
     ModelInfo m_modelInfo;
     QString m_modelLoadingError;
     QString m_tokenSpeed;
-    QString m_device;
-    QString m_fallbackReason;
     QList<QString> m_collections;
     QList<QString> m_generatedQuestions;
     ChatModel *m_chatModel;

@@ -2,6 +2,7 @@
 
 #include "download.h"
 #include "jinja_replacements.h"
+#include "llmodel_description.h"
 #include "mysettings.h"
 #include "network.h"
 
@@ -46,6 +47,7 @@
 #include <utility>
 
 using namespace Qt::Literals::StringLiterals;
+using namespace gpt4all::ui;
 
 //#define USE_LOCAL_MODELSJSON
 
@@ -89,6 +91,12 @@ void ModelInfo::setId(const QString &id)
 {
     m_id = id;
 }
+
+void ModelInfo::setModelDesc(std::shared_ptr<const ModelDescription> value)
+{ m_modelDesc = std::move(value); }
+
+void ModelInfo::setModelDescQt(const ModelDescription *value)
+{ return setModelDesc(value->shared_from_this()); }
 
 QString ModelInfo::name() const
 {
@@ -2356,57 +2364,4 @@ void ModelList::handleDiscoveryItemErrorOccurred(QNetworkReply::NetworkError cod
 
     qWarning() << u"ERROR: Discovery item failed with error code \"%1-%2\""_s
                       .arg(code).arg(reply->errorString()).toStdString();
-}
-
-QStringList ModelList::remoteModelList(const QString &apiKey, const QUrl &baseUrl)
-{
-    QStringList modelList;
-
-    // Create the request
-    QNetworkRequest request;
-    request.setUrl(baseUrl.resolved(QUrl("models")));
-    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-
-    // Add the Authorization header
-    const QString bearerToken = QString("Bearer %1").arg(apiKey);
-    request.setRawHeader("Authorization", bearerToken.toUtf8());
-
-    // Make the GET request
-    QNetworkReply *reply = m_networkManager.get(request);
-
-    // We use a local event loop to wait for the request to complete
-    QEventLoop loop;
-    connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
-    loop.exec();
-
-    // Check for errors
-    if (reply->error() == QNetworkReply::NoError) {
-        // Parse the JSON response
-        const QByteArray responseData = reply->readAll();
-        const QJsonDocument jsonDoc = QJsonDocument::fromJson(responseData);
-
-        if (!jsonDoc.isNull() && jsonDoc.isObject()) {
-            QJsonObject rootObj = jsonDoc.object();
-            QJsonValue dataValue = rootObj.value("data");
-
-            if (dataValue.isArray()) {
-                QJsonArray dataArray = dataValue.toArray();
-                for (const QJsonValue &val : dataArray) {
-                    if (val.isObject()) {
-                        QJsonObject obj = val.toObject();
-                        const QString modelId = obj.value("id").toString();
-                        modelList.append(modelId);
-                    }
-                }
-            }
-        }
-    } else {
-        // Handle network error (e.g. print it to qDebug)
-        qWarning() << "Error retrieving models:" << reply->errorString();
-    }
-
-    // Clean up
-    reply->deleteLater();
-
-    return modelList;
 }

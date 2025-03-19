@@ -16,6 +16,7 @@
 #include <QSortFilterProxyModel>
 #include <QSslError>
 #include <QString>
+#include <QUuid>
 #include <QVariant>
 #include <QVector> // IWYU pragma: keep
 #include <Qt>
@@ -27,6 +28,7 @@
 // IWYU pragma: no_forward_declare QObject
 // IWYU pragma: no_forward_declare QSslError
 class QUrl;
+namespace gpt4all::ui { class ModelDescription; }
 
 using namespace Qt::Literals::StringLiterals;
 
@@ -75,6 +77,7 @@ private:
 struct ModelInfo {
     Q_GADGET
     Q_PROPERTY(QString id READ id WRITE setId)
+    Q_PROPERTY(const gpt4all::ui::ModelDescription *modelDesc READ modelDescQt WRITE setModelDescQt)
     Q_PROPERTY(QString name READ name WRITE setName)
     Q_PROPERTY(QString filename READ filename WRITE setFilename)
     Q_PROPERTY(QString dirpath MEMBER dirpath)
@@ -136,6 +139,14 @@ public:
 
     QString id() const;
     void setId(const QString &id);
+
+    auto modelDesc() const -> const std::shared_ptr<const gpt4all::ui::ModelDescription> &
+    { return m_modelDesc; }
+    auto modelDescQt() const -> const gpt4all::ui::ModelDescription *
+    { return modelDesc().get(); }
+
+    void setModelDesc(std::shared_ptr<const gpt4all::ui::ModelDescription> value);
+    void setModelDescQt(const gpt4all::ui::ModelDescription *value);
 
     QString name() const;
     void setName(const QString &name);
@@ -247,6 +258,7 @@ private:
     QVariant getField(QLatin1StringView name) const;
 
     QString m_id;
+    std::shared_ptr<const gpt4all::ui::ModelDescription> m_modelDesc; // TODO: set this somewhere
     QString m_name;
     QString m_filename;
     QString m_description;
@@ -533,8 +545,6 @@ public:
     bool discoverInProgress() const;
 
     Q_INVOKABLE void discoverSearch(const QString &discover);
-
-    Q_INVOKABLE QStringList remoteModelList(const QString &apiKey, const QUrl &baseUrl);
 
 Q_SIGNALS:
     void countChanged();

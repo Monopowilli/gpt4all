@@ -1,5 +1,7 @@
 #include "jinja_helpers.h"
 
+#include <fmt/format.h>
+
 #include <QString>
 #include <QUrl>
 

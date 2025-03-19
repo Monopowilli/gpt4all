@@ -412,21 +412,6 @@ void Chat::handleTokenSpeedChanged(const QString &tokenSpeed)
     emit tokenSpeedChanged();
 }
 
-QString Chat::deviceBackend() const
-{
-    return m_llmodel->deviceBackend();
-}
-
-QString Chat::device() const
-{
-    return m_llmodel->device();
-}
-
-QString Chat::fallbackReason() const
-{
-    return m_llmodel->fallbackReason();
-}
-
 void Chat::handleDatabaseResultsChanged(const QList<ResultInfo> &results)
 {
     m_databaseResults = results;

@@ -1,0 +1,6 @@
+#pragma once
+
+#include <QString>
+
+
+inline const QString OLLAMA_URL = QStringLiteral("@G4A_TEST_OLLAMA_URL@");

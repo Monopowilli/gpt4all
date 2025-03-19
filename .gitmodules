@@ -1,16 +1,16 @@
-[submodule "llama.cpp-mainline"]
-	path = gpt4all-backend/deps/llama.cpp-mainline
+[submodule "gpt4all-backend-old/deps/llama.cpp-mainline"]
+	path = gpt4all-backend-old/deps/llama.cpp-mainline
 	url = https://github.com/nomic-ai/llama.cpp.git
-	branch = master
+    branch = master
 [submodule "gpt4all-chat/usearch"]
 	path = gpt4all-chat/deps/usearch
 	url = https://github.com/nomic-ai/usearch.git
 [submodule "gpt4all-chat/deps/SingleApplication"]
 	path = gpt4all-chat/deps/SingleApplication
 	url = https://github.com/nomic-ai/SingleApplication.git
-[submodule "gpt4all-chat/deps/fmt"]
-	path = gpt4all-chat/deps/fmt
-	url = https://github.com/fmtlib/fmt.git
+[submodule "deps/fmt"]
+	path = deps/fmt
+	url = https://github.com/nomic-ai/fmt.git
 [submodule "gpt4all-chat/deps/DuckX"]
 	path = gpt4all-chat/deps/DuckX
 	url = https://github.com/nomic-ai/DuckX.git
@@ -23,3 +23,12 @@
 [submodule "gpt4all-chat/deps/json"]
 	path = gpt4all-chat/deps/json
 	url = https://github.com/nlohmann/json.git
+[submodule "gpt4all-backend/deps/qcoro"]
+	path = deps/qcoro
+	url = https://github.com/nomic-ai/qcoro.git
+[submodule "gpt4all-backend/deps/date"]
+	path = gpt4all-backend/deps/date
+	url = https://github.com/HowardHinnant/date.git
+[submodule "gpt4all-chat/deps/generator"]
+	path = gpt4all-chat/deps/generator
+	url = https://github.com/TartanLlama/generator.git

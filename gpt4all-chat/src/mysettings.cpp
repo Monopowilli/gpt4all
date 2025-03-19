@@ -1,6 +1,8 @@
 #include "mysettings.h"
 
 #include "chatllm.h"
+#include "config.h"
+#include "llmodel_provider.h"
 #include "modellist.h"
 
 #include <gpt4all-backend/llmodel.h>
@@ -30,6 +32,7 @@
 #endif
 
 using namespace Qt::Literals::StringLiterals;
+using namespace gpt4all::ui;
 
 
 // used only for settings serialization, do not translate
@@ -47,8 +50,6 @@ namespace ModelSettingsKey { namespace {
 
 namespace defaults {
 
-static const int     threadCount             = std::min(4, (int32_t) std::thread::hardware_concurrency());
-static const bool    forceMetal              = false;
 static const bool    networkIsActive         = false;
 static const bool    networkUsageStatsActive = false;
 static const QString device                  = "Auto";
@@ -71,7 +72,6 @@ static const QVariantMap basicDefaults {
     { "localdocs/fileExtensions", QStringList { "docx", "pdf", "txt", "md", "rst" } },
     { "localdocs/useRemoteEmbed", false },
     { "localdocs/nomicAPIKey",    "" },
-    { "localdocs/embedDevice",    "Auto" },
     { "network/attribution",      "" },
 };
 
@@ -174,9 +174,14 @@ MySettings *MySettings::globalInstance()
 MySettings::MySettings()
     : QObject(nullptr)
     , m_deviceList(getDevices())
-    , m_embeddingsDeviceList(getDevices(/*skipKompute*/ true))
     , m_uiLanguages(getUiLanguages(modelPath()))
 {
+}
+
+const QByteArray &MySettings::userAgent()
+{
+    static const QByteArray s_userAgent = QByteArrayLiteral("gpt4all/" APP_VERSION);
+    return s_userAgent;
 }
 
 QVariant MySettings::checkJinjaTemplateError(const QString &tmpl)
@@ -250,13 +255,11 @@ void MySettings::restoreApplicationDefaults()
     setChatTheme(basicDefaults.value("chatTheme").value<ChatTheme>());
     setFontSize(basicDefaults.value("fontSize").value<FontSize>());
     setDevice(defaults::device);
-    setThreadCount(defaults::threadCount);
     setSystemTray(basicDefaults.value("systemTray").toBool());
     setServerChat(basicDefaults.value("serverChat").toBool());
     setNetworkPort(basicDefaults.value("networkPort").toInt());
     setModelPath(defaultLocalModelsPath());
     setUserDefaultModel(basicDefaults.value("userDefaultModel").toString());
-    setForceMetal(defaults::forceMetal);
     setSuggestionMode(basicDefaults.value("suggestionMode").value<SuggestionMode>());
     setLanguageAndLocale(defaults::languageAndLocale);
 }
@@ -269,7 +272,6 @@ void MySettings::restoreLocalDocsDefaults()
     setLocalDocsFileExtensions(basicDefaults.value("localdocs/fileExtensions").toStringList());
     setLocalDocsUseRemoteEmbed(basicDefaults.value("localdocs/useRemoteEmbed").toBool());
     setLocalDocsNomicAPIKey(basicDefaults.value("localdocs/nomicAPIKey").toString());
-    setLocalDocsEmbedDevice(basicDefaults.value("localdocs/embedDevice").toString());
 }
 
 void MySettings::eraseModel(const ModelInfo &info)
@@ -351,6 +353,28 @@ double    MySettings::modelRepeatPenalty          (const ModelInfo &info) const 
 int       MySettings::modelRepeatPenaltyTokens    (const ModelInfo &info) const { return getModelSetting("repeatPenaltyTokens",     info).toInt(); }
 QString   MySettings::modelChatNamePrompt         (const ModelInfo &info) const { return getModelSetting("chatNamePrompt",          info).toString(); }
 QString   MySettings::modelSuggestedFollowUpPrompt(const ModelInfo &info) const { return getModelSetting("suggestedFollowUpPrompt", info).toString(); }
+
+auto MySettings::modelGenParams(const ModelInfo &info) -> std::unique_ptr<GenerationParams>
+{
+#if 0
+    // this coed is copied from server.cpp.
+    std::unique_ptr<GenerationParams> genParams;
+    {
+        using enum GenerationParam;
+        QMap<GenerationParam, QVariant> values;
+        if (auto v = request.max_tokens ) values.insert(NPredict,    *v);
+        if (auto v = request.temperature) values.insert(Temperature, *v);
+        if (auto v = request.top_p      ) values.insert(TopP,        *v);
+        if (auto v = request.min_p      ) values.insert(MinP,        *v);
+        try {
+            genParams.reset(modelProvider()->makeGenerationParams(values));
+        } catch (const std::exception &e) {
+            throw InvalidRequestError(e.what());
+        }
+    }
+#endif
+    return nullptr; // TODO: implement
+}
 
 auto MySettings::getUpgradeableModelSetting(
     const ModelInfo &info, QLatin1StringView legacyKey, QLatin1StringView newKey
@@ -594,29 +618,6 @@ void MySettings::setModelSuggestedFollowUpPrompt(const ModelInfo &info, const QS
     setModelSetting("suggestedFollowUpPrompt", info, value, force, true);
 }
 
-int MySettings::threadCount() const
-{
-    int c = m_settings.value("threadCount", defaults::threadCount).toInt();
-    // The old thread setting likely left many people with 0 in settings config file, which means
-    // we should reset it to the default going forward
-    if (c <= 0)
-        c = defaults::threadCount;
-    c = std::max(c, 1);
-    c = std::min(c, QThread::idealThreadCount());
-    return c;
-}
-
-void MySettings::setThreadCount(int value)
-{
-    if (threadCount() == value)
-        return;
-
-    value = std::max(value, 1);
-    value = std::min(value, QThread::idealThreadCount());
-    m_settings.setValue("threadCount", value);
-    emit threadCountChanged();
-}
-
 bool        MySettings::systemTray() const              { return getBasicSetting("systemTray"              ).toBool(); }
 bool        MySettings::serverChat() const              { return getBasicSetting("serverChat"              ).toBool(); }
 int         MySettings::networkPort() const             { return getBasicSetting("networkPort"             ).toInt(); }
@@ -628,7 +629,6 @@ bool        MySettings::localDocsShowReferences() const { return getBasicSetting
 QStringList MySettings::localDocsFileExtensions() const { return getBasicSetting("localdocs/fileExtensions").toStringList(); }
 bool        MySettings::localDocsUseRemoteEmbed() const { return getBasicSetting("localdocs/useRemoteEmbed").toBool(); }
 QString     MySettings::localDocsNomicAPIKey() const    { return getBasicSetting("localdocs/nomicAPIKey"   ).toString(); }
-QString     MySettings::localDocsEmbedDevice() const    { return getBasicSetting("localdocs/embedDevice"   ).toString(); }
 QString     MySettings::networkAttribution() const      { return getBasicSetting("network/attribution"     ).toString(); }
 
 ChatTheme      MySettings::chatTheme() const      { return ChatTheme     (getEnumSetting("chatTheme", chatThemeNames)); }
@@ -646,7 +646,6 @@ void MySettings::setLocalDocsShowReferences(bool value)               { setBasic
 void MySettings::setLocalDocsFileExtensions(const QStringList &value) { setBasicSetting("localdocs/fileExtensions", value, "localDocsFileExtensions"); }
 void MySettings::setLocalDocsUseRemoteEmbed(bool value)               { setBasicSetting("localdocs/useRemoteEmbed", value, "localDocsUseRemoteEmbed"); }
 void MySettings::setLocalDocsNomicAPIKey(const QString &value)        { setBasicSetting("localdocs/nomicAPIKey",    value, "localDocsNomicAPIKey"); }
-void MySettings::setLocalDocsEmbedDevice(const QString &value)        { setBasicSetting("localdocs/embedDevice",    value, "localDocsEmbedDevice"); }
 void MySettings::setNetworkAttribution(const QString &value)          { setBasicSetting("network/attribution",      value, "networkAttribution"); }
 
 void MySettings::setChatTheme(ChatTheme value)           { setBasicSetting("chatTheme",      chatThemeNames     .value(int(value))); }
@@ -703,19 +702,6 @@ void MySettings::setDevice(const QString &value)
     if (device() != value) {
         m_settings.setValue("device", value);
         emit deviceChanged();
-    }
-}
-
-bool MySettings::forceMetal() const
-{
-    return m_forceMetal;
-}
-
-void MySettings::setForceMetal(bool value)
-{
-    if (m_forceMetal != value) {
-        m_forceMetal = value;
-        emit forceMetalChanged(value);
     }
 }
 

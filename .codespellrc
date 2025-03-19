@@ -1,3 +1,3 @@
 [codespell]
-ignore-words-list = blong, afterall, assistent, crasher, requestor
+ignore-words-list = blong, afterall, assistent, crasher, requestor, nam
 skip = ./.git,./gpt4all-chat/translations,*.pdf,*.svg,*.lock

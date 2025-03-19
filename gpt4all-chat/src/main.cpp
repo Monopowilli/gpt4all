@@ -2,6 +2,7 @@
 #include "config.h"
 #include "download.h"
 #include "llm.h"
+#include "llmodel_provider.h"
 #include "localdocs.h"
 #include "logger.h"
 #include "modellist.h"
@@ -52,6 +53,9 @@
 using namespace Qt::Literals::StringLiterals;
 
 
+namespace gpt4all::ui {
+
+
 static void raiseWindow(QWindow *window)
 {
 #ifdef Q_OS_WINDOWS
@@ -70,8 +74,19 @@ static void raiseWindow(QWindow *window)
 #endif
 }
 
+Q_GLOBAL_STATIC(QNetworkAccessManager, globalNetworkAccessManager)
+
+QNetworkAccessManager *networkAccessManager()
+{ return globalNetworkAccessManager(); }
+
+
+} // namespace gpt4all::ui
+
+
 int main(int argc, char *argv[])
 {
+    using namespace gpt4all::ui;
+
 #ifndef GPT4ALL_USE_QTPDF
     FPDF_InitLibrary();
 #endif
@@ -139,8 +154,11 @@ int main(int argc, char *argv[])
     qmlRegisterSingletonInstance("network", 1, 0, "Network", Network::globalInstance());
     qmlRegisterSingletonInstance("localdocs", 1, 0, "LocalDocs", LocalDocs::globalInstance());
     qmlRegisterSingletonInstance("toollist", 1, 0, "ToolList", ToolModel::globalInstance());
+    qmlRegisterSingletonInstance("gpt4all.ProviderRegistry", 1, 0, "ProviderRegistry", ProviderRegistry::globalInstance());
     qmlRegisterUncreatableMetaObject(ToolEnums::staticMetaObject, "toolenums", 1, 0, "ToolEnums", "Error: only enums");
     qmlRegisterUncreatableMetaObject(MySettingsEnums::staticMetaObject, "mysettingsenums", 1, 0, "MySettingsEnums", "Error: only enums");
+    qmlRegisterUncreatableMetaObject(gpt4all::ui::llmodel_provider::staticMetaObject, "gpt4all.llmodel_provider", 1, 0, "Provider", "Error: only enums");
+    qmlRegisterUncreatableMetaObject(gpt4all::ui::store_provider::staticMetaObject, "gpt4all.store_provider", 1, 0, "ProviderStore", "Error: only enums");
 
     {
         auto fixedFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);

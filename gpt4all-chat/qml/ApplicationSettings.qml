@@ -455,38 +455,6 @@ MySettingsTab {
         }
 
         MySettingsLabel {
-            id: nThreadsLabel
-            text: qsTr("CPU Threads")
-            helpText: qsTr("The number of CPU threads used for inference and embedding.")
-            Layout.row: 11
-            Layout.column: 0
-        }
-        MyTextField {
-            text: MySettings.threadCount
-            color: theme.textColor
-            font.pixelSize: theme.fontSizeLarge
-            Layout.alignment: Qt.AlignRight
-            Layout.row: 11
-            Layout.column: 2
-            Layout.minimumWidth: 200
-            Layout.maximumWidth: 200
-            validator: IntValidator {
-                bottom: 1
-            }
-            onEditingFinished: {
-                var val = parseInt(text)
-                if (!isNaN(val)) {
-                    MySettings.threadCount = val
-                    focus = false
-                } else {
-                    text = MySettings.threadCount
-                }
-            }
-            Accessible.role: Accessible.EditableText
-            Accessible.name: nThreadsLabel.text
-            Accessible.description: ToolTip.text
-        }
-        MySettingsLabel {
             id: trayLabel
             text: qsTr("Enable System Tray")
             helpText: qsTr("The application will minimize to the system tray when the window is closed.")

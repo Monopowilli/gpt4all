@@ -1,7 +1,5 @@
 cmake_minimum_required(VERSION 3.25)  # for try_compile SOURCE_FROM_VAR
 
-include(../common/common.cmake)
-
 set(APP_VERSION_MAJOR 3)
 set(APP_VERSION_MINOR 10)
 set(APP_VERSION_PATCH 1)
@@ -9,6 +7,8 @@ set(APP_VERSION_BASE "${APP_VERSION_MAJOR}.${APP_VERSION_MINOR}.${APP_VERSION_PA
 set(APP_VERSION "${APP_VERSION_BASE}-dev0")
 
 project(gpt4all VERSION ${APP_VERSION_BASE} LANGUAGES CXX C)
+
+include(../common/common.cmake)
 
 if (CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
   set(CMAKE_INSTALL_PREFIX ${CMAKE_BINARY_DIR}/install CACHE PATH "..." FORCE)
@@ -145,7 +145,8 @@ configure_file(
 )
 
 add_subdirectory(deps)
-add_subdirectory(../gpt4all-backend llmodel)
+add_subdirectory(../gpt4all-backend gpt4all-backend)
+add_subdirectory(../gpt4all-backend-old llmodel)
 
 if (GPT4ALL_TEST)
     enable_testing()
@@ -226,9 +227,7 @@ if (APPLE)
 endif()
 
 qt_add_executable(chat
-    src/main.cpp
     src/chat.cpp                  src/chat.h
-    src/chatapi.cpp               src/chatapi.h
     src/chatlistmodel.cpp         src/chatlistmodel.h
     src/chatllm.cpp               src/chatllm.h
     src/chatmodel.h               src/chatmodel.cpp
@@ -239,14 +238,26 @@ qt_add_executable(chat
     src/embllm.cpp                src/embllm.h
     src/jinja_helpers.cpp         src/jinja_helpers.h
     src/jinja_replacements.cpp    src/jinja_replacements.h
+    src/json-helpers.cpp          src/json-helpers.h
     src/llm.cpp                   src/llm.h
+    src/llmodel_chat.h            src/llmodel_chat.cpp
+    src/llmodel_description.h     src/llmodel_description.cpp
+    src/llmodel_ollama.cpp        src/llmodel_ollama.h
+    src/llmodel_openai.cpp        src/llmodel_openai.h
+    src/llmodel_provider.cpp      src/llmodel_provider.h
+    src/llmodel_provider_builtins.cpp
     src/localdocs.cpp             src/localdocs.h
     src/localdocsmodel.cpp        src/localdocsmodel.h
     src/logger.cpp                src/logger.h
+    src/main.cpp                  src/main.h
     src/modellist.cpp             src/modellist.h
     src/mysettings.cpp            src/mysettings.h
     src/network.cpp               src/network.h
+    src/qmlfunctions.cpp          src/qmlfunctions.h
+    src/qmlsharedptr.cpp          src/qmlsharedptr.h
     src/server.cpp                src/server.h
+    src/store_base.cpp            src/store_base.h
+    src/store_provider.cpp        src/store_provider.h
     src/tool.cpp                  src/tool.h
     src/toolcallparser.cpp        src/toolcallparser.h
     src/toolmodel.cpp             src/toolmodel.h
@@ -263,18 +274,20 @@ qt_add_qml_module(chat
     QML_FILES
       main.qml
       qml/AddCollectionView.qml
+      qml/AddCustomProviderView.qml
       qml/AddModelView.qml
       qml/AddGPT4AllModelView.qml
       qml/AddHFModelView.qml
       qml/AddRemoteModelView.qml
       qml/ApplicationSettings.qml
-      qml/ChatDrawer.qml
       qml/ChatCollapsibleItem.qml
+      qml/ChatDrawer.qml
       qml/ChatItemView.qml
       qml/ChatMessageButton.qml
       qml/ChatTextItem.qml
       qml/ChatView.qml
       qml/CollectionsDrawer.qml
+      qml/CustomProviderCard.qml
       qml/HomeView.qml
       qml/LocalDocsSettings.qml
       qml/LocalDocsView.qml
@@ -446,8 +459,9 @@ target_compile_definitions(chat PRIVATE QT_NO_SIGNALS_SLOTS_KEYWORDS)
 target_include_directories(chat PRIVATE deps/usearch/include
                                         deps/usearch/fp16/include)
 
-target_link_libraries(chat
-    PRIVATE Qt6::Core Qt6::HttpServer Qt6::Quick Qt6::Sql Qt6::Svg)
+target_link_libraries(chat PRIVATE
+    Qt6::Core Qt6::HttpServer Qt6::Quick Qt6::Sql Qt6::Svg
+)
 if (GPT4ALL_USING_QTPDF)
     target_compile_definitions(chat PRIVATE GPT4ALL_USE_QTPDF)
     target_link_libraries(chat PRIVATE Qt6::Pdf)
@@ -455,10 +469,18 @@ else()
     # Link PDFium
     target_link_libraries(chat PRIVATE pdfium)
 endif()
-target_link_libraries(chat
-    PRIVATE llmodel SingleApplication fmt::fmt duckx::duckx QXlsx)
-target_include_directories(chat PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/deps/json/include)
-target_include_directories(chat PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/deps/json/include/nlohmann)
+target_link_libraries(chat PRIVATE
+    Boost::describe Boost::json Boost::system
+    QCoro6::Core QCoro6::Network QCoro6::Qml
+    QXlsx
+    SingleApplication
+    duckx::duckx
+    fmt::fmt
+    gpt4all-backend
+    llmodel
+    nlohmann_json::nlohmann_json
+    tl::generator
+)
 target_include_directories(chat PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/deps/minja/include)
 
 if (APPLE)
