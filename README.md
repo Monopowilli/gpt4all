@@ -94,7 +94,7 @@ with model.chat_session():
 
 ## Integrations
 
-:parrot::link: [Langchain](https://python.langchain.com/v0.2/docs/integrations/providers/gpt4all/)
+:parrot::link: [Langchain](https://python.langchain.com/docs/integrations/providers/gpt4all/) 
 :card_file_box: [Weaviate Vector Database](https://github.com/weaviate/weaviate) - [module docs](https://weaviate.io/developers/weaviate/modules/retriever-vectorizer-modules/text2vec-gpt4all)
 :telescope: [OpenLIT (OTel-native Monitoring)](https://github.com/openlit/openlit) - [Docs](https://docs.openlit.io/latest/integrations/gpt4all)
 
